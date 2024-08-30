@@ -1,0 +1,29 @@
+version: '3'
+services:
+  dragonflydb:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: dragonflydb
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly-data:/data
+    ulimits:
+      memlock: -1
+    command: ["--dbfilename", "dragonfly"]
+
+  app:
+    build: .
+    container_name: app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - dragonflydb
+    environment:
+      - REDIS_ADDR=dragonflydb:6379
+    volumes:
+      - .:/app
+    links:
+      - dragonflydb
+
+volumes:
+  dragonfly-data:
