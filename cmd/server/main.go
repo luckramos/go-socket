@@ -6,36 +6,33 @@ import (
 	"go-socket/internal/db"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
-var currentConnectedClients = make(map[string]*websocket.Conn)
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
+var (
+	currentConnectedClients = sync.Map{}
+	upgrader                = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+)
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	apiKey := r.URL.Query().Get("api_key")
-	if apiKey == "" {
+	key := r.URL.Query().Get("api_key")
+	if key == "" {
 		http.Error(w, "API Key é obrigatória", http.StatusUnauthorized)
 		return
 	}
 
-	ctx := context.Background()
 	rdb := db.NewDatabaseClient()
+	ctx := context.Background()
 
-	exists, err := rdb.Exists(ctx, apiKey).Result()
+	apiUser, err := db.RetrieveApiKey(ctx, rdb, key)
 	if err != nil {
 		http.Error(w, "Erro ao verificar API Key", http.StatusInternalServerError)
-		return
-	}
-
-	if exists == 0 {
-		http.Error(w, "API Key inválida", http.StatusUnauthorized)
 		return
 	}
 
@@ -44,43 +41,39 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		log.Println("Erro ao atualizar para WebSocket:", err)
 		return
 	}
-	defer conn.Close()
 
-	currentConnectedClients[apiKey] = conn
+	currentConnectedClients.Store(key, conn)
+	err = apiUser.UpdateStatus(ctx, rdb, true)
+	if err != nil {
+		log.Printf("Erro ao atualizar status da API Key: %v", err)
+		return
+	}
 
-	// ticker := time.NewTicker(2 * time.Second)
-	// quit := make(chan struct{})
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <-ticker.C:
-	// 			teste := "ping"
-
-	// 			sendMessageToClient(apiKey, []byte(teste))
-
-	// 		case <-quit:
-	// 			ticker.Stop()
-	// 			return
-	// 		}
-	// 	}
-	// }()
+	defer func() {
+		err = apiUser.UpdateStatus(ctx, rdb, false)
+		if err != nil {
+			log.Printf("Erro ao atualizar status da API Key: %v", err)
+		}
+		currentConnectedClients.Delete(key)
+		conn.Close()
+	}()
 
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			delete(currentConnectedClients, apiKey)
-			conn.Close()
+			log.Printf("Erro ao ler mensagem: %v", err)
 			break
 		}
 
-		sendMessageToClient(apiKey, msg)
+		sendMessageToClient(key, msg)
 	}
 
 }
 
 func sendMessageToClient(apiKey string, message []byte) {
-	if ws, ok := currentConnectedClients[apiKey]; ok {
-		ws.WriteMessage(websocket.TextMessage, message)
+	if ws, ok := currentConnectedClients.Load(apiKey); ok {
+		conn := ws.(*websocket.Conn)
+		conn.WriteMessage(websocket.TextMessage, message)
 	}
 }
 
