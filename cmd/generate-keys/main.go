@@ -24,9 +24,11 @@ func generateAPIKey(name string) *apikey.APIKey {
 
 	apiKey := &apikey.APIKey{
 		Key: encodedKey,
-		Data: apikey.KeyMetaData{
-			Name:          name,
-			CreatedAt:     time.Now(),
+		Meta: apikey.KeyMetaData{
+			Name:      name,
+			CreatedAt: time.Now(),
+		},
+		Status: apikey.KeyStatus{
 			LastConnected: time.Now(),
 			IsConnected:   false,
 		},

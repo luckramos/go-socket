@@ -1,15 +1,21 @@
 package apikey
 
-import "time"
+import (
+	"time"
+)
 
 type KeyMetaData struct {
-	Name          string
-	CreatedAt     time.Time
-	LastConnected time.Time
-	IsConnected   bool
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type KeyStatus struct {
+	LastConnected time.Time `json:"last_connected"`
+	IsConnected   bool      `json:"is_connected"`
 }
 
 type APIKey struct {
-	Key  string
-	Data KeyMetaData
+	Key    string      `json:"key"`
+	Meta   KeyMetaData `json:"meta"`
+	Status KeyStatus   `json:"status"`
 }
